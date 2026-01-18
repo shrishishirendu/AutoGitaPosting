@@ -1,0 +1,61 @@
+from datetime import datetime
+
+from gita_autoposter.core.contracts import (
+    Commentary,
+    ComposedImage,
+    ImageArtifact,
+    ImageComposeInput,
+    ImagePrompt,
+    PostDraft,
+    PostPackageInput,
+    PostResult,
+    RunReport,
+    SequenceInput,
+    VersePayload,
+    VerseRef,
+)
+
+
+def test_contracts_validate() -> None:
+    verse_ref = VerseRef(chapter=1, verse=1)
+    verse_payload = VersePayload(
+        verse_ref=verse_ref, sanskrit="test", translation="translation"
+    )
+    SequenceInput(run_id="run")
+    commentary = Commentary(
+        verse_ref=verse_ref,
+        social="social",
+        professional="professional",
+        practical="practical",
+        caption="caption",
+    )
+    image_prompt = ImagePrompt(
+        verse_ref=verse_ref, prompt="prompt", uniqueness_signature="sig"
+    )
+    image_artifact = ImageArtifact(run_id="run", path="path.png", hash="hash")
+    compose_input = ImageComposeInput(verse_payload=verse_payload, image=image_artifact)
+    composed_image = ComposedImage(run_id="run", path="composed.png", hash="hash")
+    post_package = PostPackageInput(commentary=commentary, composed_image=composed_image)
+    post_draft = PostDraft(
+        run_id="run", caption="caption", image_path="path.png", status="draft"
+    )
+    post_result = PostResult(
+        run_id="run", platform_ids={"instagram": "1"}, status="success"
+    )
+    run_report = RunReport(
+        run_id="run",
+        status="success",
+        started_at=datetime.utcnow(),
+        finished_at=datetime.utcnow(),
+        error=None,
+        artifacts=[image_artifact],
+    )
+
+    assert verse_payload.verse_ref == verse_ref
+    assert commentary.caption == "caption"
+    assert image_prompt.uniqueness_signature == "sig"
+    assert compose_input.image == image_artifact
+    assert post_package.composed_image == composed_image
+    assert post_draft.status == "draft"
+    assert post_result.platform_ids["instagram"] == "1"
+    assert run_report.status == "success"

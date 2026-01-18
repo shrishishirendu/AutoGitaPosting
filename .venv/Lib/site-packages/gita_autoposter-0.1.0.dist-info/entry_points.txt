@@ -1,0 +1,2 @@
+[console_scripts]
+gita-autoposter = gita_autoposter.cli:main
