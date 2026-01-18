@@ -2,7 +2,7 @@ from pathlib import Path
 
 from gita_autoposter.core.config import Config
 from gita_autoposter.core.orchestrator import Orchestrator
-from gita_autoposter.db import connect, init_db
+from gita_autoposter.db import connect, init_db, load_sequence
 
 
 def test_orchestrator_dry_run(tmp_path: Path) -> None:
@@ -12,6 +12,7 @@ def test_orchestrator_dry_run(tmp_path: Path) -> None:
 
     with connect(str(db_path)) as conn:
         init_db(conn)
+        load_sequence(conn, [(1, 1), (1, 2)], reset=True)
         orchestrator = Orchestrator(config, conn)
         report = orchestrator.run_once(run_id="run-test")
 

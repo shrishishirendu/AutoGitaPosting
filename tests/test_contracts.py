@@ -11,6 +11,7 @@ from gita_autoposter.core.contracts import (
     PostResult,
     RunReport,
     SequenceInput,
+    SequenceSelection,
     VersePayload,
     VerseRef,
 )
@@ -22,6 +23,7 @@ def test_contracts_validate() -> None:
         verse_ref=verse_ref, sanskrit="test", translation="translation"
     )
     SequenceInput(run_id="run")
+    SequenceSelection(verse_ref=verse_ref, ord_index=0)
     commentary = Commentary(
         verse_ref=verse_ref,
         social="social",

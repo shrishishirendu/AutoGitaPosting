@@ -21,6 +21,11 @@ class SequenceInput(BaseModel):
     run_id: str
 
 
+class SequenceSelection(BaseModel):
+    verse_ref: VerseRef
+    ord_index: int
+
+
 class Commentary(BaseModel):
     verse_ref: VerseRef
     social: str

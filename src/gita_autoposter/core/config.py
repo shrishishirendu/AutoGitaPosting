@@ -11,6 +11,7 @@ class Config:
     dry_run: bool = True
     db_path: str = "data/app.db"
     artifact_dir: str = "artifacts"
+    sequence_xlsx_path: str = "data/sequence/verses.xlsx"
 
 
 def _parse_bool(value: str | None, default: bool) -> bool:
@@ -24,4 +25,10 @@ def load_config() -> Config:
     dry_run = _parse_bool(os.getenv("DRY_RUN"), True)
     db_path = os.getenv("DB_PATH", "data/app.db")
     artifact_dir = os.getenv("ARTIFACT_DIR", "artifacts")
-    return Config(dry_run=dry_run, db_path=db_path, artifact_dir=artifact_dir)
+    sequence_xlsx_path = os.getenv("SEQUENCE_XLSX_PATH", "data/sequence/verses.xlsx")
+    return Config(
+        dry_run=dry_run,
+        db_path=db_path,
+        artifact_dir=artifact_dir,
+        sequence_xlsx_path=sequence_xlsx_path,
+    )

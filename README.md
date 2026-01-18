@@ -3,9 +3,9 @@
 Production-grade scaffold for an agentic workflow that assembles a daily Bhagavad Gita post with a generated image and caption.
 
 ## Architecture overview
-- Orchestrator runs a deterministic agent pipeline in Milestone 1.
+- Orchestrator runs a deterministic agent pipeline in Milestone 2.
 - Strict Pydantic contracts define all messages.
-- SQLite persists runs, artifacts, and drafts.
+- SQLite persists runs, artifacts, drafts, and sequencing state.
 - DRY_RUN prevents external posting and uses mock platform IDs.
 
 ## Agents
@@ -19,10 +19,23 @@ Production-grade scaffold for an agentic workflow that assembles a daily Bhagava
 - PosterAgent
 - MonitorAgent
 
+## Excel format
+Provide a `.xlsx` file with headers `chapter_number` and `verse_number` (integers), in the exact order you want them posted. Configure the path with `SEQUENCE_XLSX_PATH` (default: `data/sequence/verses.xlsx`).
+
 ## Quickstart
 Initialize the database:
 ```bash
 gita-autoposter init-db
+```
+
+Load the verse sequence:
+```bash
+gita-autoposter load-sequence
+```
+
+Show upcoming and posted verses:
+```bash
+gita-autoposter show-sequence --limit 5
 ```
 
 Run once (DRY_RUN by default):
@@ -34,6 +47,11 @@ Show recent runs:
 ```bash
 gita-autoposter status --limit 5
 ```
+
+## Crash-safe sequencing
+The Sequencer reserves a verse before any generation. If a run crashes after reserving,
+the next run replays the same reserved verse without advancing the cursor. Only after
+posting (even in DRY_RUN) does the system mark the verse as POSTED and move to the next.
 
 ## DRY_RUN
 When `DRY_RUN=true`, the PosterAgent skips external APIs and returns mock platform IDs while still persisting drafts and artifacts.

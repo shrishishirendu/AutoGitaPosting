@@ -75,8 +75,8 @@ class Orchestrator:
 
         try:
             sequence_input = SequenceInput(run_id=run_id)
-            verse_ref = self.sequence_agent.run(sequence_input, ctx)
-            verse_payload = self.verse_fetch_agent.run(verse_ref, ctx)
+            selection = self.sequence_agent.run(sequence_input, ctx)
+            verse_payload = self.verse_fetch_agent.run(selection, ctx)
             commentary = self.commentary_agent.run(verse_payload, ctx)
             image_prompt = self.image_prompt_agent.run(commentary, ctx)
             image_artifact = self.image_generate_agent.run(image_prompt, ctx)

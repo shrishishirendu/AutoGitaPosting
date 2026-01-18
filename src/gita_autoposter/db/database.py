@@ -47,6 +47,43 @@ def init_db(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS verse_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chapter_number INTEGER NOT NULL,
+            verse_number INTEGER NOT NULL,
+            ord_index INTEGER NOT NULL UNIQUE,
+            UNIQUE (chapter_number, verse_number)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS verse_progress (
+            id INTEGER PRIMARY KEY,
+            next_ord_index INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS verse_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chapter_number INTEGER NOT NULL,
+            verse_number INTEGER NOT NULL,
+            ord_index INTEGER NOT NULL,
+            run_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            reserved_at TEXT NOT NULL,
+            posted_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO verse_progress (id, next_ord_index) VALUES (1, 0)"
+    )
     conn.commit()
 
 
@@ -112,3 +149,114 @@ def list_runs(conn: sqlite3.Connection, limit: int) -> Iterable[sqlite3.Row]:
         "SELECT run_id, status, started_at, finished_at, error FROM runs ORDER BY started_at DESC LIMIT ?",
         (limit,),
     ).fetchall()
+
+
+def get_sequence_snapshot(conn: sqlite3.Connection) -> list[tuple[int, int, int]]:
+    rows = conn.execute(
+        "SELECT chapter_number, verse_number, ord_index FROM verse_queue ORDER BY ord_index"
+    ).fetchall()
+    return [(row["chapter_number"], row["verse_number"], row["ord_index"]) for row in rows]
+
+
+def load_sequence(conn: sqlite3.Connection, sequence: list[tuple[int, int]], reset: bool) -> str:
+    existing = [(row[0], row[1]) for row in get_sequence_snapshot(conn)]
+    if existing == sequence:
+        return "unchanged"
+
+    if existing and not reset:
+        raise ValueError("Sequence mismatch. Use --reset to reload.")
+
+    conn.execute("BEGIN")
+    conn.execute("DELETE FROM verse_queue")
+    conn.execute("DELETE FROM verse_history")
+    conn.execute("DELETE FROM verse_progress")
+    conn.execute("INSERT OR IGNORE INTO verse_progress (id, next_ord_index) VALUES (1, 0)")
+
+    for ord_index, (chapter_number, verse_number) in enumerate(sequence):
+        conn.execute(
+            "INSERT INTO verse_queue (chapter_number, verse_number, ord_index) VALUES (?, ?, ?)",
+            (chapter_number, verse_number, ord_index),
+        )
+    conn.commit()
+    return "reloaded"
+
+
+def get_upcoming(conn: sqlite3.Connection, limit: int) -> list[tuple[int, int, int]]:
+    row = conn.execute("SELECT next_ord_index FROM verse_progress WHERE id = 1").fetchone()
+    next_ord = row["next_ord_index"] if row else 0
+    rows = conn.execute(
+        "SELECT chapter_number, verse_number, ord_index FROM verse_queue "
+        "WHERE ord_index >= ? ORDER BY ord_index LIMIT ?",
+        (next_ord, limit),
+    ).fetchall()
+    return [(row["chapter_number"], row["verse_number"], row["ord_index"]) for row in rows]
+
+
+def get_last_posted(conn: sqlite3.Connection, limit: int) -> list[tuple[int, int, int, str]]:
+    rows = conn.execute(
+        "SELECT chapter_number, verse_number, ord_index, posted_at "
+        "FROM verse_history WHERE status = 'POSTED' "
+        "ORDER BY posted_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [
+        (row["chapter_number"], row["verse_number"], row["ord_index"], row["posted_at"])
+        for row in rows
+    ]
+
+
+def reserve_next_verse(conn: sqlite3.Connection, run_id: str) -> tuple[int, int, int]:
+    reserved = conn.execute(
+        "SELECT chapter_number, verse_number, ord_index "
+        "FROM verse_history WHERE status = 'RESERVED' ORDER BY reserved_at ASC LIMIT 1"
+    ).fetchone()
+    if reserved:
+        return reserved["chapter_number"], reserved["verse_number"], reserved["ord_index"]
+
+    conn.execute("BEGIN IMMEDIATE")
+    row = conn.execute("SELECT next_ord_index FROM verse_progress WHERE id = 1").fetchone()
+    next_ord = row["next_ord_index"] if row else 0
+    verse_row = conn.execute(
+        "SELECT chapter_number, verse_number, ord_index FROM verse_queue WHERE ord_index = ?",
+        (next_ord,),
+    ).fetchone()
+    if not verse_row:
+        conn.execute("ROLLBACK")
+        raise ValueError("No more verses available in the queue.")
+
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        "INSERT INTO verse_history (chapter_number, verse_number, ord_index, run_id, status, reserved_at) "
+        "VALUES (?, ?, ?, ?, 'RESERVED', ?)",
+        (
+            verse_row["chapter_number"],
+            verse_row["verse_number"],
+            verse_row["ord_index"],
+            run_id,
+            now,
+        ),
+    )
+    conn.execute(
+        "UPDATE verse_progress SET next_ord_index = ?, updated_at = ? WHERE id = 1",
+        (next_ord + 1, now),
+    )
+    conn.commit()
+    return verse_row["chapter_number"], verse_row["verse_number"], verse_row["ord_index"]
+
+
+def mark_verse_posted(conn: sqlite3.Connection, run_id: str) -> int:
+    now = datetime.utcnow().isoformat()
+    cursor = conn.execute(
+        "UPDATE verse_history SET status = 'POSTED', posted_at = ? "
+        "WHERE run_id = ? AND status = 'RESERVED'",
+        (now, run_id),
+    )
+    if cursor.rowcount == 0:
+        cursor = conn.execute(
+            "UPDATE verse_history SET status = 'POSTED', posted_at = ? "
+            "WHERE id = (SELECT id FROM verse_history WHERE status = 'RESERVED' "
+            "ORDER BY reserved_at ASC LIMIT 1)",
+            (now,),
+        )
+    conn.commit()
+    return cursor.rowcount
