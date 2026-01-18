@@ -19,10 +19,12 @@ from gita_autoposter.core.config import Config
 from gita_autoposter.core.contracts import (
     ImageComposeInput,
     ImageArtifact,
+    ImagePromptInput,
     PostPackageInput,
     RunReport,
     SequenceInput,
 )
+from gita_autoposter.core.visual_intent import resolve_visual_intent
 from gita_autoposter.db import (
     add_artifact,
     add_draft,
@@ -78,15 +80,34 @@ class Orchestrator:
             selection = self.sequence_agent.run(sequence_input, ctx)
             verse_payload = self.verse_fetch_agent.run(selection, ctx)
             commentary = self.commentary_agent.run(verse_payload, ctx)
-            image_prompt = self.image_prompt_agent.run(commentary, ctx)
+            visual_intent = resolve_visual_intent(verse_payload, commentary)
+            prompt_input = ImagePromptInput(
+                verse_payload=verse_payload,
+                commentary=commentary,
+                visual_intent=visual_intent,
+            )
+            image_prompt = self.image_prompt_agent.run(prompt_input, ctx)
+            add_artifact(
+                self.db_conn,
+                run_id,
+                "prompt",
+                path="",
+                hash_value="",
+                created_at=datetime.utcnow(),
+                prompt_text=image_prompt.prompt_text,
+                prompt_fingerprint=image_prompt.fingerprint,
+            )
             image_artifact = self.image_generate_agent.run(image_prompt, ctx)
             add_artifact(
                 self.db_conn,
                 run_id,
                 "generated",
-                image_artifact.path,
-                image_artifact.hash,
+                image_artifact.path_raw,
+                image_artifact.hash_raw,
                 image_artifact.created_at,
+                provider_name=image_artifact.provider_name,
+                path_raw=image_artifact.path_raw,
+                hash_raw=image_artifact.hash_raw,
             )
             report.artifacts.append(image_artifact)
 
@@ -96,15 +117,20 @@ class Orchestrator:
                 self.db_conn,
                 run_id,
                 "composed",
-                composed_image.path,
-                composed_image.hash,
+                composed_image.path_composed,
+                composed_image.hash_composed,
                 composed_image.created_at,
+                path_composed=composed_image.path_composed,
+                hash_composed=composed_image.hash_composed,
+                overlay_text=composed_image.overlay_text,
+                font_name=composed_image.font_name,
             )
             report.artifacts.append(
                 ImageArtifact(
                     run_id=run_id,
-                    path=composed_image.path,
-                    hash=composed_image.hash,
+                    path_raw=composed_image.path_composed,
+                    hash_raw=composed_image.hash_composed,
+                    provider_name="composed",
                     created_at=composed_image.created_at,
                 )
             )
@@ -125,6 +151,9 @@ class Orchestrator:
                 hashtags=" ".join(draft.hashtags or []),
                 style_notes=draft.style_notes,
                 fingerprint=draft.fingerprint,
+                image_prompt_text=image_prompt.prompt_text,
+                image_prompt_fingerprint=image_prompt.fingerprint,
+                image_style_profile=image_prompt.style_profile,
             )
 
             result = self.poster_agent.run(draft, ctx)

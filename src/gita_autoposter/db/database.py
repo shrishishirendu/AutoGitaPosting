@@ -31,7 +31,16 @@ def init_db(conn: sqlite3.Connection) -> None:
             type TEXT NOT NULL,
             path TEXT NOT NULL,
             hash TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            prompt_text TEXT,
+            prompt_fingerprint TEXT,
+            provider_name TEXT,
+            path_raw TEXT,
+            hash_raw TEXT,
+            path_composed TEXT,
+            hash_composed TEXT,
+            overlay_text TEXT,
+            font_name TEXT
         )
         """
     )
@@ -50,6 +59,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             hashtags TEXT,
             style_notes TEXT,
             fingerprint TEXT,
+            image_prompt_text TEXT,
+            image_prompt_fingerprint TEXT,
+            image_style_profile TEXT,
             created_at TEXT NOT NULL
         )
         """
@@ -92,6 +104,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         "INSERT OR IGNORE INTO verse_progress (id, next_ord_index) VALUES (1, 0)"
     )
     _ensure_draft_columns(conn)
+    _ensure_artifact_columns(conn)
     conn.commit()
 
 
@@ -107,10 +120,33 @@ def _ensure_draft_columns(conn: sqlite3.Connection) -> None:
         "hashtags": "TEXT",
         "style_notes": "TEXT",
         "fingerprint": "TEXT",
+        "image_prompt_text": "TEXT",
+        "image_prompt_fingerprint": "TEXT",
+        "image_style_profile": "TEXT",
     }
     for name, col_type in columns.items():
         if name not in existing:
             conn.execute(f"ALTER TABLE drafts ADD COLUMN {name} {col_type}")
+
+
+def _ensure_artifact_columns(conn: sqlite3.Connection) -> None:
+    existing = {
+        row["name"] for row in conn.execute("PRAGMA table_info(artifacts)").fetchall()
+    }
+    columns = {
+        "prompt_text": "TEXT",
+        "prompt_fingerprint": "TEXT",
+        "provider_name": "TEXT",
+        "path_raw": "TEXT",
+        "hash_raw": "TEXT",
+        "path_composed": "TEXT",
+        "hash_composed": "TEXT",
+        "overlay_text": "TEXT",
+        "font_name": "TEXT",
+    }
+    for name, col_type in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE artifacts ADD COLUMN {name} {col_type}")
 
 
 def insert_run(conn: sqlite3.Connection, run_id: str, status: str, started_at: datetime) -> None:
@@ -142,10 +178,36 @@ def add_artifact(
     path: str,
     hash_value: str,
     created_at: datetime,
+    prompt_text: str | None = None,
+    prompt_fingerprint: str | None = None,
+    provider_name: str | None = None,
+    path_raw: str | None = None,
+    hash_raw: str | None = None,
+    path_composed: str | None = None,
+    hash_composed: str | None = None,
+    overlay_text: str | None = None,
+    font_name: str | None = None,
 ) -> None:
     conn.execute(
-        "INSERT INTO artifacts (run_id, type, path, hash, created_at) VALUES (?, ?, ?, ?, ?)",
-        (run_id, artifact_type, path, hash_value, created_at.isoformat()),
+        "INSERT INTO artifacts (run_id, type, path, hash, created_at, prompt_text, "
+        "prompt_fingerprint, provider_name, path_raw, hash_raw, path_composed, "
+        "hash_composed, overlay_text, font_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            run_id,
+            artifact_type,
+            path,
+            hash_value,
+            created_at.isoformat(),
+            prompt_text,
+            prompt_fingerprint,
+            provider_name,
+            path_raw,
+            hash_raw,
+            path_composed,
+            hash_composed,
+            overlay_text,
+            font_name,
+        ),
     )
     conn.commit()
 
@@ -164,11 +226,15 @@ def add_draft(
     hashtags: str | None = None,
     style_notes: str | None = None,
     fingerprint: str | None = None,
+    image_prompt_text: str | None = None,
+    image_prompt_fingerprint: str | None = None,
+    image_style_profile: str | None = None,
 ) -> None:
     conn.execute(
         "INSERT INTO drafts (run_id, caption, image_path, status, created_at, "
-        "social_en, professional_en, practical_en, caption_final_en, hashtags, style_notes, fingerprint) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "social_en, professional_en, practical_en, caption_final_en, hashtags, style_notes, "
+        "fingerprint, image_prompt_text, image_prompt_fingerprint, image_style_profile) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             run_id,
             caption,
@@ -182,6 +248,9 @@ def add_draft(
             hashtags,
             style_notes,
             fingerprint,
+            image_prompt_text,
+            image_prompt_fingerprint,
+            image_style_profile,
         ),
     )
     conn.commit()
@@ -212,6 +281,42 @@ def get_recent_caption_rows(conn: sqlite3.Connection, limit: int) -> list[sqlite
     return conn.execute(
         "SELECT caption_final_en, fingerprint, created_at FROM drafts "
         "WHERE caption_final_en IS NOT NULL ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+
+def get_recent_prompt_fingerprints(conn: sqlite3.Connection, limit: int) -> list[str]:
+    rows = conn.execute(
+        "SELECT prompt_fingerprint FROM artifacts WHERE prompt_fingerprint IS NOT NULL "
+        "ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [row["prompt_fingerprint"] for row in rows]
+
+
+def get_recent_prompt_texts(conn: sqlite3.Connection, limit: int) -> list[str]:
+    rows = conn.execute(
+        "SELECT prompt_text FROM artifacts WHERE prompt_text IS NOT NULL "
+        "ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [row["prompt_text"] for row in rows]
+
+
+def get_recent_image_hashes(conn: sqlite3.Connection, limit: int) -> list[str]:
+    rows = conn.execute(
+        "SELECT hash_raw FROM artifacts WHERE hash_raw IS NOT NULL "
+        "ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [row["hash_raw"] for row in rows]
+
+
+def get_recent_image_rows(conn: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT prompt_text, prompt_fingerprint, hash_raw, hash_composed, created_at "
+        "FROM artifacts WHERE type IN ('prompt', 'generated', 'composed') "
+        "ORDER BY created_at DESC LIMIT ?",
         (limit,),
     ).fetchall()
 

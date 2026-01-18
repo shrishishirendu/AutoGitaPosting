@@ -4,15 +4,20 @@ import argparse
 from pathlib import Path
 
 from gita_autoposter.agents.commentary_agent import CommentaryAgent
+from gita_autoposter.agents.image_compose import ImageComposeAgent
+from gita_autoposter.agents.image_generate import ImageGenerateAgent
+from gita_autoposter.agents.image_prompt import ImagePromptAgent
 from gita_autoposter.core.config import load_config
-from gita_autoposter.core.contracts import VersePayload, VerseRef
+from gita_autoposter.core.contracts import ImageComposeInput, ImagePromptInput, VersePayload, VerseRef
 from gita_autoposter.core.orchestrator import Orchestrator
+from gita_autoposter.core.visual_intent import resolve_visual_intent
 from gita_autoposter.dataset import get_verse
 from gita_autoposter.dataset_builder import build_verses_json
 from gita_autoposter.db import (
     connect,
     get_last_posted,
     get_recent_caption_rows,
+    get_recent_image_rows,
     get_upcoming,
     init_db,
     list_runs,
@@ -140,6 +145,58 @@ def _list_captions(args: argparse.Namespace) -> None:
         print("---")
 
 
+def _preview_image(args: argparse.Namespace) -> None:
+    config = load_config()
+    verse = get_verse(args.chapter, args.verse, config.gita_dataset_path)
+    verse_payload = VersePayload(
+        verse_ref=VerseRef(chapter=args.chapter, verse=args.verse),
+        ord_index=None,
+        sanskrit=verse["sanskrit"],
+        translation=verse["translation_en"],
+    )
+    with connect(config.db_path) as conn:
+        init_db(conn)
+        ctx = type(
+            "PreviewCtx",
+            (),
+            {"config": config, "db": conn, "run_id": "preview-image", "artifact_dir": config.artifact_dir},
+        )
+        commentary = CommentaryAgent().run(verse_payload, ctx)
+        visual_intent = resolve_visual_intent(verse_payload, commentary)
+        prompt_input = ImagePromptInput(
+            verse_payload=verse_payload,
+            commentary=commentary,
+            visual_intent=visual_intent,
+        )
+        prompt = ImagePromptAgent().run(prompt_input, ctx)
+        raw = ImageGenerateAgent().run(prompt, ctx)
+        composed = ImageComposeAgent().run(ImageComposeInput(verse_payload=verse_payload, image=raw), ctx)
+
+    print(
+        f"VisualIntent: {visual_intent.intent_type} "
+        f"(confidence={visual_intent.confidence}) {visual_intent.rationale}"
+    )
+    print(f"Prompt: {prompt.prompt_text}")
+    print(f"Raw image: {raw.path_raw}")
+    print(f"Composed image: {composed.path_composed}")
+
+
+def _list_images(args: argparse.Namespace) -> None:
+    config = load_config()
+    with connect(config.db_path) as conn:
+        init_db(conn)
+        rows = get_recent_image_rows(conn, args.last)
+
+    for row in rows:
+        print(
+            f"{row['created_at']} | {row['prompt_fingerprint'] or '-'} | "
+            f"raw={row['hash_raw'] or '-'} composed={row['hash_composed'] or '-'}"
+        )
+        if row["prompt_text"]:
+            print(row["prompt_text"])
+        print("---")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gita-autoposter")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -182,6 +239,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     list_captions_cmd.add_argument("--last", type=int, default=5)
     list_captions_cmd.set_defaults(func=_list_captions)
+
+    preview_image_cmd = subparsers.add_parser(
+        "preview-image", help="Generate prompt, raw, and composed images."
+    )
+    preview_image_cmd.add_argument("--chapter", type=int, required=True)
+    preview_image_cmd.add_argument("--verse", type=int, required=True)
+    preview_image_cmd.set_defaults(func=_preview_image)
+
+    list_images_cmd = subparsers.add_parser(
+        "list-images", help="List recent image prompts and hashes."
+    )
+    list_images_cmd.add_argument("--last", type=int, default=5)
+    list_images_cmd.set_defaults(func=_list_images)
 
     return parser
 

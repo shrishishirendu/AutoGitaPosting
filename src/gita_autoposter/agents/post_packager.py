@@ -10,7 +10,7 @@ class PostPackagerAgent:
         return PostDraft(
             run_id=ctx.run_id,
             caption=caption,
-            image_path=input.composed_image.path,
+            image_path=input.composed_image.path_composed,
             status="draft",
             social_en=input.commentary.social_en,
             professional_en=input.commentary.professional_en,

@@ -38,6 +38,23 @@ gita-autoposter validate-dataset
 
 License note: the upstream dataset is included under The Unlicense with attribution in `data/vendor/gita_gita/`.
 
+## Images
+Image prompts are stored with fingerprints for uniqueness. Raw and composed images are saved under `artifacts/images/`.
+Use the preview helper:
+```bash
+gita-autoposter preview-image --chapter 1 --verse 1
+```
+
+List recent image prompts and hashes:
+```bash
+gita-autoposter list-images --last 5
+```
+
+If you need the Devanagari font, run:
+```bash
+python scripts/download_fonts.py
+```
+
 ## Quickstart
 Initialize the database:
 ```bash

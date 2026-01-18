@@ -17,5 +17,5 @@ def test_orchestrator_dry_run(tmp_path: Path) -> None:
         report = orchestrator.run_once(run_id="run-test")
 
     assert report.status == "success"
-    composed_image = artifact_dir / "run-test" / "composed.png"
+    composed_image = artifact_dir / "images" / "composed" / "run-test_composed.png"
     assert composed_image.exists()

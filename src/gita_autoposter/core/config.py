@@ -13,6 +13,8 @@ class Config:
     artifact_dir: str = "artifacts"
     sequence_xlsx_path: str = "data/sequence/verses.xlsx"
     gita_dataset_path: str = "data/gita/verses.json"
+    use_real_image_provider: bool = False
+    image_size: int = 1024
 
 
 def _parse_bool(value: str | None, default: bool) -> bool:
@@ -28,10 +30,14 @@ def load_config() -> Config:
     artifact_dir = os.getenv("ARTIFACT_DIR", "artifacts")
     sequence_xlsx_path = os.getenv("SEQUENCE_XLSX_PATH", "data/sequence/verses.xlsx")
     gita_dataset_path = os.getenv("GITA_DATASET_PATH", "data/gita/verses.json")
+    use_real_image_provider = _parse_bool(os.getenv("USE_REAL_IMAGE_PROVIDER"), False)
+    image_size = int(os.getenv("IMAGE_SIZE", "1024"))
     return Config(
         dry_run=dry_run,
         db_path=db_path,
         artifact_dir=artifact_dir,
         sequence_xlsx_path=sequence_xlsx_path,
         gita_dataset_path=gita_dataset_path,
+        use_real_image_provider=use_real_image_provider,
+        image_size=image_size,
     )

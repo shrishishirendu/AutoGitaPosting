@@ -34,11 +34,26 @@ def test_contracts_validate() -> None:
         fingerprint="hash",
     )
     image_prompt = ImagePrompt(
-        verse_ref=verse_ref, prompt="prompt", uniqueness_signature="sig"
+        verse_ref=verse_ref,
+        prompt_text="prompt",
+        style_profile="style",
+        uniqueness_signature="sig",
+        fingerprint="hash",
     )
-    image_artifact = ImageArtifact(run_id="run", path="path.png", hash="hash")
+    image_artifact = ImageArtifact(
+        run_id="run",
+        path_raw="path.png",
+        hash_raw="hash",
+        provider_name="mock",
+    )
     compose_input = ImageComposeInput(verse_payload=verse_payload, image=image_artifact)
-    composed_image = ComposedImage(run_id="run", path="composed.png", hash="hash")
+    composed_image = ComposedImage(
+        run_id="run",
+        path_composed="composed.png",
+        hash_composed="hash",
+        overlay_text="text",
+        font_name="font",
+    )
     post_package = PostPackageInput(commentary=commentary, composed_image=composed_image)
     post_draft = PostDraft(
         run_id="run", caption="caption", image_path="path.png", status="draft"
