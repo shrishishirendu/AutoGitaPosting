@@ -6,6 +6,7 @@ Production-grade scaffold for an agentic workflow that assembles a daily Bhagava
 - Orchestrator runs a deterministic agent pipeline in Milestone 2.
 - Strict Pydantic contracts define all messages.
 - SQLite persists runs, artifacts, drafts, and sequencing state.
+- Verses are loaded from a vendored Bhagavad Gita dataset built into `data/gita/verses.json`.
 - DRY_RUN prevents external posting and uses mock platform IDs.
 
 ## Agents
@@ -21,6 +22,21 @@ Production-grade scaffold for an agentic workflow that assembles a daily Bhagava
 
 ## Excel format
 Provide a `.xlsx` file with headers `chapter_number` and `verse_number` (integers), in the exact order you want them posted. Configure the path with `SEQUENCE_XLSX_PATH` (default: `data/sequence/verses.xlsx`).
+
+## Dataset
+Vendored upstream data lives in `data/vendor/gita_gita/` with attribution and the upstream license. The app reads the canonical dataset from `data/gita/verses.json` (override with `GITA_DATASET_PATH`).
+
+Build the canonical dataset with:
+```bash
+gita-autoposter build-dataset
+```
+
+Validate the sequence against the dataset:
+```bash
+gita-autoposter validate-dataset
+```
+
+License note: the upstream dataset is included under The Unlicense with attribution in `data/vendor/gita_gita/`.
 
 ## Quickstart
 Initialize the database:

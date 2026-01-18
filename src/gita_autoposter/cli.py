@@ -13,7 +13,9 @@ from gita_autoposter.db import (
     list_runs,
     load_sequence,
 )
+from gita_autoposter.dataset_builder import build_verses_json
 from gita_autoposter.sequence_loader import read_sequence_xlsx
+from gita_autoposter.validation import find_missing_verses
 
 
 def _init_db(args: argparse.Namespace) -> None:
@@ -73,6 +75,28 @@ def _show_sequence(args: argparse.Namespace) -> None:
         print(f"{ord_index}: {chapter}.{verse} at {posted_at}")
 
 
+def _build_dataset(args: argparse.Namespace) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    vendor_dir = repo_root / "data" / "vendor" / "gita_gita"
+    output_path = repo_root / "data" / "gita" / "verses.json"
+    count = build_verses_json(vendor_dir, output_path)
+    print(f"Wrote {count} verses to {output_path}")
+
+
+def _validate_dataset(args: argparse.Namespace) -> None:
+    config = load_config()
+    with connect(config.db_path) as conn:
+        init_db(conn)
+        missing = find_missing_verses(conn, config.gita_dataset_path)
+
+    if missing:
+        print("Missing verses:")
+        for chapter, verse in missing:
+            print(f"{chapter}.{verse}")
+        raise SystemExit(1)
+    print("Dataset validation passed.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gita-autoposter")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -94,6 +118,14 @@ def build_parser() -> argparse.ArgumentParser:
     show_cmd = subparsers.add_parser("show-sequence", help="Show upcoming and posted verses.")
     show_cmd.add_argument("--limit", type=int, default=5, help="Number of verses to show.")
     show_cmd.set_defaults(func=_show_sequence)
+
+    build_cmd = subparsers.add_parser("build-dataset", help="Build the canonical verses dataset.")
+    build_cmd.set_defaults(func=_build_dataset)
+
+    validate_cmd = subparsers.add_parser(
+        "validate-dataset", help="Validate verse_queue against the verses dataset."
+    )
+    validate_cmd.set_defaults(func=_validate_dataset)
 
     return parser
 

@@ -158,6 +158,13 @@ def get_sequence_snapshot(conn: sqlite3.Connection) -> list[tuple[int, int, int]
     return [(row["chapter_number"], row["verse_number"], row["ord_index"]) for row in rows]
 
 
+def get_queue_pairs(conn: sqlite3.Connection) -> list[tuple[int, int, int]]:
+    rows = conn.execute(
+        "SELECT chapter_number, verse_number, ord_index FROM verse_queue ORDER BY ord_index"
+    ).fetchall()
+    return [(row["chapter_number"], row["verse_number"], row["ord_index"]) for row in rows]
+
+
 def load_sequence(conn: sqlite3.Connection, sequence: list[tuple[int, int]], reset: bool) -> str:
     existing = [(row[0], row[1]) for row in get_sequence_snapshot(conn)]
     if existing == sequence:
