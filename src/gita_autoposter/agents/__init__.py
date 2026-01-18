@@ -1,4 +1,4 @@
-from gita_autoposter.agents.commentary import CommentaryAgent
+from gita_autoposter.agents.commentary_agent import CommentaryAgent
 from gita_autoposter.agents.image_compose import ImageComposeAgent
 from gita_autoposter.agents.image_generate import ImageGenerateAgent
 from gita_autoposter.agents.image_prompt import ImagePromptAgent

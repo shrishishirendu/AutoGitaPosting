@@ -13,6 +13,7 @@ class VerseRef(BaseModel):
 
 class VersePayload(BaseModel):
     verse_ref: VerseRef
+    ord_index: Optional[int] = None
     sanskrit: str
     translation: str
 
@@ -28,10 +29,13 @@ class SequenceSelection(BaseModel):
 
 class Commentary(BaseModel):
     verse_ref: VerseRef
-    social: str
-    professional: str
-    practical: str
-    caption: str
+    social_en: str
+    professional_en: str
+    practical_en: str
+    caption_final_en: str
+    hashtags: List[str]
+    style_notes: Optional[str] = None
+    fingerprint: str
 
 
 class ImagePrompt(BaseModel):
@@ -64,6 +68,13 @@ class PostDraft(BaseModel):
     caption: str
     image_path: str
     status: str
+    social_en: Optional[str] = None
+    professional_en: Optional[str] = None
+    practical_en: Optional[str] = None
+    caption_final_en: Optional[str] = None
+    hashtags: Optional[List[str]] = None
+    style_notes: Optional[str] = None
+    fingerprint: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

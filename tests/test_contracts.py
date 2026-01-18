@@ -26,10 +26,12 @@ def test_contracts_validate() -> None:
     SequenceSelection(verse_ref=verse_ref, ord_index=0)
     commentary = Commentary(
         verse_ref=verse_ref,
-        social="social",
-        professional="professional",
-        practical="practical",
-        caption="caption",
+        social_en="social",
+        professional_en="professional",
+        practical_en="practical",
+        caption_final_en="caption",
+        hashtags=["#test"],
+        fingerprint="hash",
     )
     image_prompt = ImagePrompt(
         verse_ref=verse_ref, prompt="prompt", uniqueness_signature="sig"
@@ -54,7 +56,7 @@ def test_contracts_validate() -> None:
     )
 
     assert verse_payload.verse_ref == verse_ref
-    assert commentary.caption == "caption"
+    assert commentary.caption_final_en == "caption"
     assert image_prompt.uniqueness_signature == "sig"
     assert compose_input.image == image_artifact
     assert post_package.composed_image == composed_image

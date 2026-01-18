@@ -3,17 +3,21 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from gita_autoposter.agents.commentary_agent import CommentaryAgent
 from gita_autoposter.core.config import load_config
+from gita_autoposter.core.contracts import VersePayload, VerseRef
 from gita_autoposter.core.orchestrator import Orchestrator
+from gita_autoposter.dataset import get_verse
+from gita_autoposter.dataset_builder import build_verses_json
 from gita_autoposter.db import (
     connect,
     get_last_posted,
+    get_recent_caption_rows,
     get_upcoming,
     init_db,
     list_runs,
     load_sequence,
 )
-from gita_autoposter.dataset_builder import build_verses_json
 from gita_autoposter.sequence_loader import read_sequence_xlsx
 from gita_autoposter.validation import find_missing_verses
 
@@ -97,6 +101,45 @@ def _validate_dataset(args: argparse.Namespace) -> None:
     print("Dataset validation passed.")
 
 
+def _preview_commentary(args: argparse.Namespace) -> None:
+    config = load_config()
+    verse = get_verse(args.chapter, args.verse, config.gita_dataset_path)
+    verse_payload = VersePayload(
+        verse_ref=VerseRef(chapter=args.chapter, verse=args.verse),
+        ord_index=None,
+        sanskrit=verse["sanskrit"],
+        translation=verse["translation_en"],
+    )
+    with connect(config.db_path) as conn:
+        init_db(conn)
+        ctx = type("PreviewCtx", (), {"config": config, "db": conn, "run_id": "preview"})
+        agent = CommentaryAgent()
+        commentary = agent.run(verse_payload, ctx)
+
+    print("SOCIAL:")
+    print(commentary.social_en)
+    print("PROFESSIONAL:")
+    print(commentary.professional_en)
+    print("PRACTICAL:")
+    print(commentary.practical_en)
+    print("CAPTION:")
+    print(commentary.caption_final_en)
+    print("HASHTAGS:")
+    print(" ".join(commentary.hashtags))
+
+
+def _list_captions(args: argparse.Namespace) -> None:
+    config = load_config()
+    with connect(config.db_path) as conn:
+        init_db(conn)
+        rows = get_recent_caption_rows(conn, args.last)
+
+    for row in rows:
+        print(f"{row['created_at']} | {row['fingerprint'] or '-'}")
+        print(row["caption_final_en"])
+        print("---")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gita-autoposter")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -126,6 +169,19 @@ def build_parser() -> argparse.ArgumentParser:
         "validate-dataset", help="Validate verse_queue against the verses dataset."
     )
     validate_cmd.set_defaults(func=_validate_dataset)
+
+    preview_cmd = subparsers.add_parser(
+        "preview-commentary", help="Generate commentary for a verse."
+    )
+    preview_cmd.add_argument("--chapter", type=int, required=True)
+    preview_cmd.add_argument("--verse", type=int, required=True)
+    preview_cmd.set_defaults(func=_preview_commentary)
+
+    list_captions_cmd = subparsers.add_parser(
+        "list-captions", help="List recent captions."
+    )
+    list_captions_cmd.add_argument("--last", type=int, default=5)
+    list_captions_cmd.set_defaults(func=_list_captions)
 
     return parser
 

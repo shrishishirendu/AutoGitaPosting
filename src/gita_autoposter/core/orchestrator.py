@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 import sqlite3
 
-from gita_autoposter.agents.commentary import CommentaryAgent
+from gita_autoposter.agents.commentary_agent import CommentaryAgent
 from gita_autoposter.agents.image_compose import ImageComposeAgent
 from gita_autoposter.agents.image_generate import ImageGenerateAgent
 from gita_autoposter.agents.image_prompt import ImagePromptAgent
@@ -111,7 +111,21 @@ class Orchestrator:
 
             package_input = PostPackageInput(commentary=commentary, composed_image=composed_image)
             draft = self.post_packager_agent.run(package_input, ctx)
-            add_draft(self.db_conn, run_id, draft.caption, draft.image_path, draft.status, draft.created_at)
+            add_draft(
+                self.db_conn,
+                run_id,
+                draft.caption,
+                draft.image_path,
+                draft.status,
+                draft.created_at,
+                social_en=draft.social_en,
+                professional_en=draft.professional_en,
+                practical_en=draft.practical_en,
+                caption_final_en=draft.caption_final_en,
+                hashtags=" ".join(draft.hashtags or []),
+                style_notes=draft.style_notes,
+                fingerprint=draft.fingerprint,
+            )
 
             result = self.poster_agent.run(draft, ctx)
             update_draft_status(self.db_conn, run_id, result.status)

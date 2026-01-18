@@ -43,6 +43,13 @@ def init_db(conn: sqlite3.Connection) -> None:
             caption TEXT NOT NULL,
             image_path TEXT NOT NULL,
             status TEXT NOT NULL,
+            social_en TEXT,
+            professional_en TEXT,
+            practical_en TEXT,
+            caption_final_en TEXT,
+            hashtags TEXT,
+            style_notes TEXT,
+            fingerprint TEXT,
             created_at TEXT NOT NULL
         )
         """
@@ -84,7 +91,26 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.execute(
         "INSERT OR IGNORE INTO verse_progress (id, next_ord_index) VALUES (1, 0)"
     )
+    _ensure_draft_columns(conn)
     conn.commit()
+
+
+def _ensure_draft_columns(conn: sqlite3.Connection) -> None:
+    existing = {
+        row["name"] for row in conn.execute("PRAGMA table_info(drafts)").fetchall()
+    }
+    columns = {
+        "social_en": "TEXT",
+        "professional_en": "TEXT",
+        "practical_en": "TEXT",
+        "caption_final_en": "TEXT",
+        "hashtags": "TEXT",
+        "style_notes": "TEXT",
+        "fingerprint": "TEXT",
+    }
+    for name, col_type in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE drafts ADD COLUMN {name} {col_type}")
 
 
 def insert_run(conn: sqlite3.Connection, run_id: str, status: str, started_at: datetime) -> None:
@@ -131,10 +157,32 @@ def add_draft(
     image_path: str,
     status: str,
     created_at: datetime,
+    social_en: str | None = None,
+    professional_en: str | None = None,
+    practical_en: str | None = None,
+    caption_final_en: str | None = None,
+    hashtags: str | None = None,
+    style_notes: str | None = None,
+    fingerprint: str | None = None,
 ) -> None:
     conn.execute(
-        "INSERT INTO drafts (run_id, caption, image_path, status, created_at) VALUES (?, ?, ?, ?, ?)",
-        (run_id, caption, image_path, status, created_at.isoformat()),
+        "INSERT INTO drafts (run_id, caption, image_path, status, created_at, "
+        "social_en, professional_en, practical_en, caption_final_en, hashtags, style_notes, fingerprint) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            run_id,
+            caption,
+            image_path,
+            status,
+            created_at.isoformat(),
+            social_en,
+            professional_en,
+            practical_en,
+            caption_final_en,
+            hashtags,
+            style_notes,
+            fingerprint,
+        ),
     )
     conn.commit()
 
@@ -147,6 +195,23 @@ def update_draft_status(conn: sqlite3.Connection, run_id: str, status: str) -> N
 def list_runs(conn: sqlite3.Connection, limit: int) -> Iterable[sqlite3.Row]:
     return conn.execute(
         "SELECT run_id, status, started_at, finished_at, error FROM runs ORDER BY started_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+
+def get_recent_captions(conn: sqlite3.Connection, limit: int) -> list[str]:
+    rows = conn.execute(
+        "SELECT caption_final_en FROM drafts WHERE caption_final_en IS NOT NULL "
+        "ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [row["caption_final_en"] for row in rows]
+
+
+def get_recent_caption_rows(conn: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT caption_final_en, fingerprint, created_at FROM drafts "
+        "WHERE caption_final_en IS NOT NULL ORDER BY created_at DESC LIMIT ?",
         (limit,),
     ).fetchall()
 

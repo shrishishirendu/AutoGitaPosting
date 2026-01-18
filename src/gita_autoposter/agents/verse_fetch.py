@@ -11,6 +11,7 @@ class VerseFetchAgent:
         )
         return VersePayload(
             verse_ref=input.verse_ref,
+            ord_index=input.ord_index,
             sanskrit=record["sanskrit"],
             translation=record["translation_en"],
         )
