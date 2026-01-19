@@ -31,8 +31,11 @@ from gita_autoposter.db import (
     finish_run,
     init_db,
     insert_run,
+    mark_verse_skipped,
+    reserve_next_verse,
     update_draft_status,
 )
+from gita_autoposter.dataset import VerseNotFoundError
 
 
 @dataclass
@@ -58,7 +61,9 @@ class Orchestrator:
         self.poster_agent = PosterAgent()
         self.monitor_agent = MonitorAgent()
 
-    def run_once(self, run_id: str | None = None) -> RunReport:
+    def run_once(
+        self, run_id: str | None = None, post_now: bool = True, scheduled_time: str | None = None
+    ) -> RunReport:
         init_db(self.db_conn)
         run_id = run_id or str(uuid.uuid4())
         started_at = datetime.utcnow()
@@ -78,7 +83,7 @@ class Orchestrator:
         try:
             sequence_input = SequenceInput(run_id=run_id)
             selection = self.sequence_agent.run(sequence_input, ctx)
-            verse_payload = self.verse_fetch_agent.run(selection, ctx)
+            verse_payload = self._fetch_with_skips(selection, ctx)
             commentary = self.commentary_agent.run(verse_payload, ctx)
             visual_intent = resolve_visual_intent(verse_payload, commentary)
             prompt_input = ImagePromptInput(
@@ -154,10 +159,14 @@ class Orchestrator:
                 image_prompt_text=image_prompt.prompt_text,
                 image_prompt_fingerprint=image_prompt.fingerprint,
                 image_style_profile=image_prompt.style_profile,
+                scheduled_time_sydney=scheduled_time,
             )
 
-            result = self.poster_agent.run(draft, ctx)
-            update_draft_status(self.db_conn, run_id, result.status)
+            if post_now:
+                result = self.poster_agent.run(draft, ctx)
+                update_draft_status(self.db_conn, run_id, result.status)
+            else:
+                update_draft_status(self.db_conn, run_id, "scheduled")
 
             report.status = "success"
             report.finished_at = datetime.utcnow()
@@ -170,3 +179,31 @@ class Orchestrator:
             raise
 
         return self.monitor_agent.run(report, ctx)
+
+    def _fetch_with_skips(self, selection, ctx, max_skips: int = 10):
+        attempts = 0
+        current_selection = selection
+        while True:
+            try:
+                return self.verse_fetch_agent.run(current_selection, ctx)
+            except VerseNotFoundError as exc:
+                attempts += 1
+                chapter = current_selection.verse_ref.chapter
+                verse = current_selection.verse_ref.verse
+                ord_index = current_selection.ord_index
+                message = f"Verse not found in dataset: {chapter}.{verse}"
+                print(f"Warning: Skipping verse {chapter}.{verse}: not found in dataset")
+                mark_verse_skipped(ctx.db, ctx.run_id, chapter, verse, ord_index, message)
+                if attempts >= max_skips:
+                    raise RuntimeError(
+                        f"No valid verses found in dataset after skipping {attempts} entries."
+                    ) from exc
+                next_chapter, next_verse, next_ord = reserve_next_verse(ctx.db, ctx.run_id)
+                current_selection = current_selection.model_copy(
+                    update={
+                        "verse_ref": current_selection.verse_ref.model_copy(
+                            update={"chapter": next_chapter, "verse": next_verse}
+                        ),
+                        "ord_index": next_ord,
+                    }
+                )

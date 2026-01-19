@@ -18,7 +18,10 @@ from gita_autoposter.db.database import (
     load_sequence,
     list_runs,
     mark_verse_posted,
+    mark_verse_skipped,
     reserve_next_verse,
+    set_post_results,
+    set_scheduled_time,
     update_draft_status,
 )
 
@@ -42,6 +45,9 @@ __all__ = [
     "load_sequence",
     "list_runs",
     "mark_verse_posted",
+    "mark_verse_skipped",
     "reserve_next_verse",
+    "set_post_results",
+    "set_scheduled_time",
     "update_draft_status",
 ]

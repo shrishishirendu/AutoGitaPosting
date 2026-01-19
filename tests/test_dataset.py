@@ -12,25 +12,8 @@ from gita_autoposter.core.orchestrator import RunContext
 from gita_autoposter.dataset_builder import build_verses_json
 from gita_autoposter.db import connect, init_db, load_sequence
 from gita_autoposter.sequence_loader import read_sequence_xlsx
-from gita_autoposter.validation import find_missing_verses
+from gita_autoposter.validation import find_missing_verses, validate_dataset_file
 
-
-def _write_vendor_json(path: Path) -> None:
-    data = [
-        {
-            "chapter": 1,
-            "verse": 1,
-            "slok": "धृतराष्ट्र उवाच",
-            "translation": "Dhritarashtra said",
-        },
-        {
-            "chapter": 1,
-            "verse": 2,
-            "slok": "सञ्जय उवाच",
-            "translation": "Sanjaya said",
-        },
-    ]
-    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
 def _write_sequence_xlsx(path: Path, rows: list[tuple[int, int]]) -> None:
@@ -43,13 +26,19 @@ def _write_sequence_xlsx(path: Path, rows: list[tuple[int, int]]) -> None:
 
 
 def test_build_dataset(tmp_path: Path) -> None:
-    vendor_dir = tmp_path / "vendor"
-    vendor_dir.mkdir()
-    vendor_file = vendor_dir / "bhagavad_gita.json"
-    _write_vendor_json(vendor_file)
-
+    csv_path = tmp_path / "main_utf8.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "Chapter,Verse,Sanskrit Anuvad,English Translation",
+                "1,1,sanskrit text 1,Dhritarashtra said",
+                "1,2,sanskrit text 2,Sanjaya said",
+            ]
+        ),
+        encoding="utf-8",
+    )
     output_path = tmp_path / "verses.json"
-    count = build_verses_json(vendor_dir, output_path)
+    count = build_verses_json(csv_path, output_path)
 
     assert count == 2
     assert output_path.exists()
@@ -61,10 +50,10 @@ def test_verse_fetch_agent_returns_payload(tmp_path: Path) -> None:
         json.dumps(
             [
                 {
-                    "chapter": 1,
-                    "verse": 1,
+                    "chapter_number": 1,
+                    "verse_number": 1,
                     "sanskrit": "धृतराष्ट्र उवाच",
-                    "translation_en": "Dhritarashtra said",
+                    "english_translation": "Dhritarashtra said",
                 }
             ],
             ensure_ascii=False,
@@ -95,10 +84,10 @@ def test_validate_dataset(tmp_path: Path) -> None:
         json.dumps(
             [
                 {
-                    "chapter": 1,
-                    "verse": 1,
+                    "chapter_number": 1,
+                    "verse_number": 1,
                     "sanskrit": "धृतराष्ट्र उवाच",
-                    "translation_en": "Dhritarashtra said",
+                    "english_translation": "Dhritarashtra said",
                 }
             ],
             ensure_ascii=False,
@@ -125,10 +114,10 @@ def test_validate_dataset_reports_missing(tmp_path: Path) -> None:
         json.dumps(
             [
                 {
-                    "chapter": 1,
-                    "verse": 1,
+                    "chapter_number": 1,
+                    "verse_number": 1,
                     "sanskrit": "धृतराष्ट्र उवाच",
-                    "translation_en": "Dhritarashtra said",
+                    "english_translation": "Dhritarashtra said",
                 }
             ],
             ensure_ascii=False,
@@ -147,3 +136,26 @@ def test_validate_dataset_reports_missing(tmp_path: Path) -> None:
         missing = find_missing_verses(conn, str(dataset_path))
 
     assert missing == [(9, 9)]
+
+
+def test_build_dataset_from_repo_csv(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    csv_path = repo_root / "data" / "gita" / "raw" / "main_utf8.csv"
+    assert csv_path.exists()
+
+    output_path = tmp_path / "verses.json"
+    count = build_verses_json(csv_path, output_path)
+
+    assert count >= 650
+    assert output_path.exists()
+
+
+def test_validate_dataset_for_generated_file(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    csv_path = repo_root / "data" / "gita" / "raw" / "main_utf8.csv"
+    output_path = tmp_path / "verses.json"
+
+    build_verses_json(csv_path, output_path)
+    warnings, errors = validate_dataset_file(str(output_path))
+
+    assert errors == []

@@ -13,5 +13,5 @@ class VerseFetchAgent:
             verse_ref=input.verse_ref,
             ord_index=input.ord_index,
             sanskrit=record["sanskrit"],
-            translation=record["translation_en"],
+            translation=record["english_translation"],
         )

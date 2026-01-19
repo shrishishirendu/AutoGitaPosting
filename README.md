@@ -88,3 +88,33 @@ posting (even in DRY_RUN) does the system mark the verse as POSTED and move to t
 
 ## DRY_RUN
 When `DRY_RUN=true`, the PosterAgent skips external APIs and returns mock platform IDs while still persisting drafts and artifacts.
+
+## Scheduler & Posting
+Run a one-off scheduled draft (no posting):
+```bash
+gita-autoposter schedule-once
+```
+
+Post immediately:
+```bash
+gita-autoposter post-now
+```
+
+Run the continuous scheduler:
+```bash
+gita-autoposter run-scheduler
+```
+
+Defaults:
+- `TIMEZONE=Australia/Sydney`
+- `POST_TIME=07:00`
+
+### Meta Graph API (LIVE)
+Set these env vars before switching `DRY_RUN=false`:
+- `FB_PAGE_ID`
+- `IG_USER_ID`
+- `META_ACCESS_TOKEN`
+- `POST_TO_FACEBOOK=true/false`
+- `POST_TO_INSTAGRAM=true/false`
+
+Safety tip: start with `DRY_RUN=true` and use `post-now` before enabling live posting.

@@ -13,10 +13,10 @@ def test_preview_image_creates_files(tmp_path: Path) -> None:
         json.dumps(
             [
                 {
-                    "chapter": 1,
-                    "verse": 1,
+                    "chapter_number": 1,
+                    "verse_number": 1,
                     "sanskrit": "धृतराष्ट्र उवाच",
-                    "translation_en": "Dhritarashtra said",
+                    "english_translation": "Dhritarashtra said",
                 }
             ],
             ensure_ascii=False,

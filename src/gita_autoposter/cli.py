@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from gita_autoposter.agents.commentary_agent import CommentaryAgent
 from gita_autoposter.agents.image_compose import ImageComposeAgent
 from gita_autoposter.agents.image_generate import ImageGenerateAgent
 from gita_autoposter.agents.image_prompt import ImagePromptAgent
+from gita_autoposter.agents.scheduler import SchedulerAgent
 from gita_autoposter.core.config import load_config
 from gita_autoposter.core.contracts import ImageComposeInput, ImagePromptInput, VersePayload, VerseRef
 from gita_autoposter.core.orchestrator import Orchestrator
@@ -24,7 +28,7 @@ from gita_autoposter.db import (
     load_sequence,
 )
 from gita_autoposter.sequence_loader import read_sequence_xlsx
-from gita_autoposter.validation import find_missing_verses
+from gita_autoposter.validation import validate_dataset_file
 
 
 def _init_db(args: argparse.Namespace) -> None:
@@ -86,22 +90,21 @@ def _show_sequence(args: argparse.Namespace) -> None:
 
 def _build_dataset(args: argparse.Namespace) -> None:
     repo_root = Path(__file__).resolve().parents[2]
-    vendor_dir = repo_root / "data" / "vendor" / "gita_gita"
+    csv_path = repo_root / "data" / "gita" / "raw" / "main_utf8.csv"
     output_path = repo_root / "data" / "gita" / "verses.json"
-    count = build_verses_json(vendor_dir, output_path)
+    count = build_verses_json(csv_path, output_path)
     print(f"Wrote {count} verses to {output_path}")
 
 
 def _validate_dataset(args: argparse.Namespace) -> None:
     config = load_config()
-    with connect(config.db_path) as conn:
-        init_db(conn)
-        missing = find_missing_verses(conn, config.gita_dataset_path)
-
-    if missing:
-        print("Missing verses:")
-        for chapter, verse in missing:
-            print(f"{chapter}.{verse}")
+    warnings, errors = validate_dataset_file(config.gita_dataset_path)
+    for warning in warnings:
+        print(f"Warning: {warning}")
+    if errors:
+        print("Dataset validation failed:")
+        for error in errors:
+            print(f"- {error}")
         raise SystemExit(1)
     print("Dataset validation passed.")
 
@@ -113,7 +116,7 @@ def _preview_commentary(args: argparse.Namespace) -> None:
         verse_ref=VerseRef(chapter=args.chapter, verse=args.verse),
         ord_index=None,
         sanskrit=verse["sanskrit"],
-        translation=verse["translation_en"],
+        translation=verse["english_translation"],
     )
     with connect(config.db_path) as conn:
         init_db(conn)
@@ -145,6 +148,43 @@ def _list_captions(args: argparse.Namespace) -> None:
         print("---")
 
 
+def _schedule_once(args: argparse.Namespace) -> None:
+    config = load_config()
+    scheduler = SchedulerAgent(config.timezone, config.post_time)
+    scheduled = scheduler.next_scheduled_time().scheduled_time
+    scheduled_str = scheduled.isoformat()
+    with connect(config.db_path) as conn:
+        init_db(conn)
+        orchestrator = Orchestrator(config, conn)
+        report = orchestrator.run_once(post_now=False, scheduled_time=scheduled_str)
+    print(f"Scheduled run {report.run_id} for {scheduled_str}")
+
+
+def _post_now(args: argparse.Namespace) -> None:
+    config = load_config()
+    timezone = ZoneInfo(config.timezone)
+    scheduled_str = datetime.now(timezone).isoformat()
+    with connect(config.db_path) as conn:
+        init_db(conn)
+        orchestrator = Orchestrator(config, conn)
+        report = orchestrator.run_once(post_now=True, scheduled_time=scheduled_str)
+    print(f"Run {report.run_id} finished with status {report.status}")
+
+
+def _run_scheduler(args: argparse.Namespace) -> None:
+    config = load_config()
+    scheduler = SchedulerAgent(config.timezone, config.post_time)
+    while True:
+        next_time = scheduler.next_scheduled_time().scheduled_time
+        wait_seconds = max(0, (next_time - datetime.now(next_time.tzinfo)).total_seconds())
+        print(f"Next run at {next_time.isoformat()} ({int(wait_seconds)}s)")
+        time.sleep(wait_seconds)
+        with connect(config.db_path) as conn:
+            init_db(conn)
+            orchestrator = Orchestrator(config, conn)
+            orchestrator.run_once(post_now=True, scheduled_time=next_time.isoformat())
+
+
 def _preview_image(args: argparse.Namespace) -> None:
     config = load_config()
     verse = get_verse(args.chapter, args.verse, config.gita_dataset_path)
@@ -152,7 +192,7 @@ def _preview_image(args: argparse.Namespace) -> None:
         verse_ref=VerseRef(chapter=args.chapter, verse=args.verse),
         ord_index=None,
         sanskrit=verse["sanskrit"],
-        translation=verse["translation_en"],
+        translation=verse["english_translation"],
     )
     with connect(config.db_path) as conn:
         init_db(conn)
@@ -223,7 +263,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_cmd.set_defaults(func=_build_dataset)
 
     validate_cmd = subparsers.add_parser(
-        "validate-dataset", help="Validate verse_queue against the verses dataset."
+        "validate-dataset", help="Validate the verses dataset."
     )
     validate_cmd.set_defaults(func=_validate_dataset)
 
@@ -252,6 +292,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     list_images_cmd.add_argument("--last", type=int, default=5)
     list_images_cmd.set_defaults(func=_list_images)
+
+    schedule_cmd = subparsers.add_parser(
+        "schedule-once", help="Schedule a run for the next post time."
+    )
+    schedule_cmd.set_defaults(func=_schedule_once)
+
+    post_now_cmd = subparsers.add_parser(
+        "post-now", help="Run the pipeline immediately."
+    )
+    post_now_cmd.set_defaults(func=_post_now)
+
+    scheduler_cmd = subparsers.add_parser(
+        "run-scheduler", help="Run the scheduler loop."
+    )
+    scheduler_cmd.set_defaults(func=_run_scheduler)
 
     return parser
 

@@ -62,6 +62,11 @@ def init_db(conn: sqlite3.Connection) -> None:
             image_prompt_text TEXT,
             image_prompt_fingerprint TEXT,
             image_style_profile TEXT,
+            scheduled_time_sydney TEXT,
+            posted_time_sydney TEXT,
+            facebook_post_id TEXT,
+            instagram_post_id TEXT,
+            error_message TEXT,
             created_at TEXT NOT NULL
         )
         """
@@ -96,7 +101,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             run_id TEXT NOT NULL,
             status TEXT NOT NULL,
             reserved_at TEXT NOT NULL,
-            posted_at TEXT
+            posted_at TEXT,
+            error_message TEXT,
+            updated_at TEXT
         )
         """
     )
@@ -105,6 +112,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     )
     _ensure_draft_columns(conn)
     _ensure_artifact_columns(conn)
+    _ensure_verse_history_columns(conn)
     conn.commit()
 
 
@@ -123,6 +131,11 @@ def _ensure_draft_columns(conn: sqlite3.Connection) -> None:
         "image_prompt_text": "TEXT",
         "image_prompt_fingerprint": "TEXT",
         "image_style_profile": "TEXT",
+        "scheduled_time_sydney": "TEXT",
+        "posted_time_sydney": "TEXT",
+        "facebook_post_id": "TEXT",
+        "instagram_post_id": "TEXT",
+        "error_message": "TEXT",
     }
     for name, col_type in columns.items():
         if name not in existing:
@@ -147,6 +160,19 @@ def _ensure_artifact_columns(conn: sqlite3.Connection) -> None:
     for name, col_type in columns.items():
         if name not in existing:
             conn.execute(f"ALTER TABLE artifacts ADD COLUMN {name} {col_type}")
+
+
+def _ensure_verse_history_columns(conn: sqlite3.Connection) -> None:
+    existing = {
+        row["name"] for row in conn.execute("PRAGMA table_info(verse_history)").fetchall()
+    }
+    columns = {
+        "error_message": "TEXT",
+        "updated_at": "TEXT",
+    }
+    for name, col_type in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE verse_history ADD COLUMN {name} {col_type}")
 
 
 def insert_run(conn: sqlite3.Connection, run_id: str, status: str, started_at: datetime) -> None:
@@ -229,12 +255,18 @@ def add_draft(
     image_prompt_text: str | None = None,
     image_prompt_fingerprint: str | None = None,
     image_style_profile: str | None = None,
+    scheduled_time_sydney: str | None = None,
+    posted_time_sydney: str | None = None,
+    facebook_post_id: str | None = None,
+    instagram_post_id: str | None = None,
+    error_message: str | None = None,
 ) -> None:
     conn.execute(
         "INSERT INTO drafts (run_id, caption, image_path, status, created_at, "
         "social_en, professional_en, practical_en, caption_final_en, hashtags, style_notes, "
-        "fingerprint, image_prompt_text, image_prompt_fingerprint, image_style_profile) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "fingerprint, image_prompt_text, image_prompt_fingerprint, image_style_profile, "
+        "scheduled_time_sydney, posted_time_sydney, facebook_post_id, instagram_post_id, error_message) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             run_id,
             caption,
@@ -251,6 +283,11 @@ def add_draft(
             image_prompt_text,
             image_prompt_fingerprint,
             image_style_profile,
+            scheduled_time_sydney,
+            posted_time_sydney,
+            facebook_post_id,
+            instagram_post_id,
+            error_message,
         ),
     )
     conn.commit()
@@ -258,6 +295,39 @@ def add_draft(
 
 def update_draft_status(conn: sqlite3.Connection, run_id: str, status: str) -> None:
     conn.execute("UPDATE drafts SET status = ? WHERE run_id = ?", (status, run_id))
+    conn.commit()
+
+
+def set_scheduled_time(conn: sqlite3.Connection, run_id: str, scheduled_time: str) -> None:
+    conn.execute(
+        "UPDATE drafts SET scheduled_time_sydney = COALESCE(scheduled_time_sydney, ?) "
+        "WHERE run_id = ?",
+        (scheduled_time, run_id),
+    )
+    conn.commit()
+
+
+def set_post_results(
+    conn: sqlite3.Connection,
+    run_id: str,
+    status: str,
+    posted_time_sydney: str | None,
+    facebook_post_id: str | None,
+    instagram_post_id: str | None,
+    error_message: str | None,
+) -> None:
+    conn.execute(
+        "UPDATE drafts SET status = ?, posted_time_sydney = ?, facebook_post_id = ?, "
+        "instagram_post_id = ?, error_message = ? WHERE run_id = ?",
+        (
+            status,
+            posted_time_sydney,
+            facebook_post_id,
+            instagram_post_id,
+            error_message,
+            run_id,
+        ),
+    )
     conn.commit()
 
 
@@ -397,6 +467,18 @@ def reserve_next_verse(conn: sqlite3.Connection, run_id: str) -> tuple[int, int,
         "SELECT chapter_number, verse_number, ord_index FROM verse_queue WHERE ord_index = ?",
         (next_ord,),
     ).fetchone()
+    while verse_row and conn.execute(
+        "SELECT 1 FROM verse_history WHERE ord_index = ? AND status = 'SKIPPED' LIMIT 1",
+        (verse_row["ord_index"],),
+    ).fetchone():
+        next_ord += 1
+        verse_row = conn.execute(
+            "SELECT chapter_number, verse_number, ord_index FROM verse_queue WHERE ord_index = ?",
+            (next_ord,),
+        ).fetchone()
+        if verse_row is None:
+            conn.execute("ROLLBACK")
+            raise ValueError("No more verses available in the queue.")
     if not verse_row:
         conn.execute("ROLLBACK")
         raise ValueError("No more verses available in the queue.")
@@ -437,3 +519,20 @@ def mark_verse_posted(conn: sqlite3.Connection, run_id: str) -> int:
         )
     conn.commit()
     return cursor.rowcount
+
+
+def mark_verse_skipped(
+    conn: sqlite3.Connection,
+    run_id: str,
+    chapter_number: int,
+    verse_number: int,
+    ord_index: int,
+    error_message: str,
+) -> None:
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        "UPDATE verse_history SET status = 'SKIPPED', error_message = ?, updated_at = ? "
+        "WHERE run_id = ? AND chapter_number = ? AND verse_number = ? AND ord_index = ?",
+        (error_message, now, run_id, chapter_number, verse_number, ord_index),
+    )
+    conn.commit()

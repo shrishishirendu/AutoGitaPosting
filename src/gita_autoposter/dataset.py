@@ -30,12 +30,21 @@ def load_dataset(path: str) -> Dict[Tuple[int, int], dict]:
     for item in data:
         if not isinstance(item, dict):
             raise ValueError("Dataset contains a non-object record.")
-        chapter = int(item.get("chapter"))
-        verse = int(item.get("verse"))
+        chapter_value = item.get("chapter_number", item.get("chapter"))
+        verse_value = item.get("verse_number", item.get("verse"))
+        if chapter_value is None or verse_value is None:
+            raise ValueError("Dataset record missing chapter or verse number.")
+        chapter = int(chapter_value)
+        verse = int(verse_value)
         sanskrit = str(item.get("sanskrit", "")).strip()
-        translation = str(item.get("translation_en", "")).strip()
+        translation = str(
+            item.get("english_translation", item.get("translation_en", ""))
+        ).strip()
         if not sanskrit or not translation:
             raise ValueError(f"Missing required text for {chapter}.{verse}.")
+        item.setdefault("chapter_number", chapter)
+        item.setdefault("verse_number", verse)
+        item.setdefault("english_translation", translation)
         index[(chapter, verse)] = item
 
     _DATASET_CACHE[path] = index
