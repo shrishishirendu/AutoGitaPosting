@@ -3,6 +3,7 @@ from gita_autoposter.db.database import (
     add_draft,
     connect,
     finish_run,
+    get_last_failed_run,
     get_last_posted,
     get_queue_pairs,
     get_recent_caption_rows,
@@ -11,6 +12,7 @@ from gita_autoposter.db.database import (
     get_recent_image_rows,
     get_recent_prompt_fingerprints,
     get_recent_prompt_texts,
+    get_run_selection,
     get_sequence_snapshot,
     get_upcoming,
     init_db,
@@ -23,6 +25,7 @@ from gita_autoposter.db.database import (
     set_post_results,
     set_scheduled_time,
     update_draft_status,
+    update_run_stage,
 )
 
 __all__ = [
@@ -30,6 +33,7 @@ __all__ = [
     "add_draft",
     "connect",
     "finish_run",
+    "get_last_failed_run",
     "get_last_posted",
     "get_queue_pairs",
     "get_recent_caption_rows",
@@ -38,6 +42,7 @@ __all__ = [
     "get_recent_image_rows",
     "get_recent_prompt_fingerprints",
     "get_recent_prompt_texts",
+    "get_run_selection",
     "get_sequence_snapshot",
     "get_upcoming",
     "init_db",
@@ -50,4 +55,5 @@ __all__ = [
     "set_post_results",
     "set_scheduled_time",
     "update_draft_status",
+    "update_run_stage",
 ]

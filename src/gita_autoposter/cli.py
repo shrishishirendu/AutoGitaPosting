@@ -22,6 +22,8 @@ from gita_autoposter.db import (
     get_last_posted,
     get_recent_caption_rows,
     get_recent_image_rows,
+    get_last_failed_run,
+    get_run_selection,
     get_upcoming,
     init_db,
     list_runs,
@@ -51,12 +53,80 @@ def _run_once(args: argparse.Namespace) -> None:
 def _status(args: argparse.Namespace) -> None:
     config = load_config()
     with connect(config.db_path) as conn:
-        rows = list_runs(conn, args.limit)
-    for row in rows:
+        init_db(conn)
+        if args.last:
+            rows = list_runs(conn, 1)
+        else:
+            rows = list_runs(conn, args.limit)
+
+        payload = []
+        for row in rows:
+            selection = get_run_selection(conn, row["run_id"])
+            chapter_verse = (
+                f"{selection[0]}.{selection[1]}" if selection else "-"
+            )
+            error_message = row["error_message"] or ""
+            payload.append(
+                {
+                    "run_id": row["run_id"],
+                    "status": row["status"],
+                    "stage": row["stage"],
+                    "started_at": row["started_at"],
+                    "finished_at": row["finished_at"],
+                    "selection": chapter_verse,
+                    "error_message": error_message,
+                }
+            )
+
+    if args.json:
+        import json as _json
+
+        if args.last:
+            print(_json.dumps(payload[0] if payload else {}, ensure_ascii=False))
+        else:
+            print(_json.dumps(payload, ensure_ascii=False))
+        return
+
+    for item in payload:
+        short_error = (item["error_message"] or "")[:60]
         print(
-            f"{row['run_id']} | {row['status']} | {row['started_at']} | "
-            f"{row['finished_at'] or '-'}"
+            f"{item['run_id']} | {item['status']} | {item['started_at']} | "
+            f"{item['finished_at'] or '-'} | {item['selection']} | "
+            f"{item['stage'] or '-'} | {short_error or '-'}"
         )
+
+    if args.last and payload:
+        details = payload[0]
+        if details["error_message"]:
+            print(f"Error: {details['error_message']}")
+
+
+def _debug_last(args: argparse.Namespace) -> None:
+    config = load_config()
+    with connect(config.db_path) as conn:
+        init_db(conn)
+        run = get_last_failed_run(conn)
+        if not run:
+            print("No failed runs found.")
+            return
+        selection = get_run_selection(conn, run["run_id"])
+    artifacts_root = Path(config.artifact_dir)
+    run_dir = artifacts_root / run["run_id"]
+    report_path = run_dir / "run_report.json"
+    log_path = run_dir / "run.log"
+
+    print(f"Run: {run['run_id']}")
+    print(f"Status: {run['status']}")
+    print(f"Stage: {run['stage'] or '-'}")
+    print(f"Started: {run['started_at']}")
+    print(f"Finished: {run['finished_at'] or '-'}")
+    if selection:
+        print(f"Selection: {selection[0]}.{selection[1]}")
+    if run["error_message"]:
+        print(f"Error: {run['error_message']}")
+    print(f"Artifacts: {run_dir}")
+    print(f"Report: {report_path if report_path.exists() else '-'}")
+    print(f"Log: {log_path if log_path.exists() else '-'}")
 
 
 def _load_sequence(args: argparse.Namespace) -> None:
@@ -249,6 +319,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     status_cmd = subparsers.add_parser("status", help="Show recent runs.")
     status_cmd.add_argument("--limit", type=int, default=5, help="Number of runs to show.")
+    status_cmd.add_argument("--last", action="store_true", help="Show the latest run details.")
+    status_cmd.add_argument("--json", action="store_true", help="Output machine-readable JSON.")
     status_cmd.set_defaults(func=_status)
 
     load_cmd = subparsers.add_parser("load-sequence", help="Load verse sequence from Excel.")
@@ -307,6 +379,11 @@ def build_parser() -> argparse.ArgumentParser:
         "run-scheduler", help="Run the scheduler loop."
     )
     scheduler_cmd.set_defaults(func=_run_scheduler)
+
+    debug_cmd = subparsers.add_parser(
+        "debug-last", help="Show details for the last failed run."
+    )
+    debug_cmd.set_defaults(func=_debug_last)
 
     return parser
 

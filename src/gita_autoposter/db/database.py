@@ -17,9 +17,11 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS runs (
             run_id TEXT PRIMARY KEY,
             status TEXT NOT NULL,
+            stage TEXT,
             started_at TEXT NOT NULL,
             finished_at TEXT,
-            error TEXT
+            error TEXT,
+            error_message TEXT
         )
         """
     )
@@ -67,7 +69,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             facebook_post_id TEXT,
             instagram_post_id TEXT,
             error_message TEXT,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            updated_at TEXT
         )
         """
     )
@@ -113,6 +116,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     _ensure_draft_columns(conn)
     _ensure_artifact_columns(conn)
     _ensure_verse_history_columns(conn)
+    _ensure_run_columns(conn)
     conn.commit()
 
 
@@ -136,6 +140,7 @@ def _ensure_draft_columns(conn: sqlite3.Connection) -> None:
         "facebook_post_id": "TEXT",
         "instagram_post_id": "TEXT",
         "error_message": "TEXT",
+        "updated_at": "TEXT",
     }
     for name, col_type in columns.items():
         if name not in existing:
@@ -175,10 +180,23 @@ def _ensure_verse_history_columns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE verse_history ADD COLUMN {name} {col_type}")
 
 
-def insert_run(conn: sqlite3.Connection, run_id: str, status: str, started_at: datetime) -> None:
+def _ensure_run_columns(conn: sqlite3.Connection) -> None:
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+    columns = {
+        "stage": "TEXT",
+        "error_message": "TEXT",
+    }
+    for name, col_type in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {col_type}")
+
+
+def insert_run(
+    conn: sqlite3.Connection, run_id: str, status: str, started_at: datetime, stage: str | None = None
+) -> None:
     conn.execute(
-        "INSERT INTO runs (run_id, status, started_at) VALUES (?, ?, ?)",
-        (run_id, status, started_at.isoformat()),
+        "INSERT INTO runs (run_id, status, stage, started_at) VALUES (?, ?, ?, ?)",
+        (run_id, status, stage, started_at.isoformat()),
     )
     conn.commit()
 
@@ -191,9 +209,14 @@ def finish_run(
     error: str | None,
 ) -> None:
     conn.execute(
-        "UPDATE runs SET status = ?, finished_at = ?, error = ? WHERE run_id = ?",
-        (status, finished_at.isoformat() if finished_at else None, error, run_id),
+        "UPDATE runs SET status = ?, finished_at = ?, error = ?, error_message = ? WHERE run_id = ?",
+        (status, finished_at.isoformat() if finished_at else None, error, error, run_id),
     )
+    conn.commit()
+
+
+def update_run_stage(conn: sqlite3.Connection, run_id: str, stage: str) -> None:
+    conn.execute("UPDATE runs SET stage = ? WHERE run_id = ?", (stage, run_id))
     conn.commit()
 
 
@@ -265,8 +288,8 @@ def add_draft(
         "INSERT INTO drafts (run_id, caption, image_path, status, created_at, "
         "social_en, professional_en, practical_en, caption_final_en, hashtags, style_notes, "
         "fingerprint, image_prompt_text, image_prompt_fingerprint, image_style_profile, "
-        "scheduled_time_sydney, posted_time_sydney, facebook_post_id, instagram_post_id, error_message) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "scheduled_time_sydney, posted_time_sydney, facebook_post_id, instagram_post_id, error_message, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             run_id,
             caption,
@@ -288,13 +311,18 @@ def add_draft(
             facebook_post_id,
             instagram_post_id,
             error_message,
+            created_at.isoformat(),
         ),
     )
     conn.commit()
 
 
 def update_draft_status(conn: sqlite3.Connection, run_id: str, status: str) -> None:
-    conn.execute("UPDATE drafts SET status = ? WHERE run_id = ?", (status, run_id))
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        "UPDATE drafts SET status = ?, updated_at = ? WHERE run_id = ?",
+        (status, now, run_id),
+    )
     conn.commit()
 
 
@@ -316,15 +344,17 @@ def set_post_results(
     instagram_post_id: str | None,
     error_message: str | None,
 ) -> None:
+    now = datetime.utcnow().isoformat()
     conn.execute(
         "UPDATE drafts SET status = ?, posted_time_sydney = ?, facebook_post_id = ?, "
-        "instagram_post_id = ?, error_message = ? WHERE run_id = ?",
+        "instagram_post_id = ?, error_message = ?, updated_at = ? WHERE run_id = ?",
         (
             status,
             posted_time_sydney,
             facebook_post_id,
             instagram_post_id,
             error_message,
+            now,
             run_id,
         ),
     )
@@ -333,9 +363,39 @@ def set_post_results(
 
 def list_runs(conn: sqlite3.Connection, limit: int) -> Iterable[sqlite3.Row]:
     return conn.execute(
-        "SELECT run_id, status, started_at, finished_at, error FROM runs ORDER BY started_at DESC LIMIT ?",
+        "SELECT run_id, status, stage, started_at, finished_at, "
+        "COALESCE(error_message, error) AS error_message "
+        "FROM runs ORDER BY started_at DESC LIMIT ?",
         (limit,),
     ).fetchall()
+
+
+def get_run(conn: sqlite3.Connection, run_id: str) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT run_id, status, stage, started_at, finished_at, "
+        "COALESCE(error_message, error) AS error_message "
+        "FROM runs WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()
+
+
+def get_last_failed_run(conn: sqlite3.Connection) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT run_id, status, stage, started_at, finished_at, "
+        "COALESCE(error_message, error) AS error_message "
+        "FROM runs WHERE status = 'failed' ORDER BY started_at DESC LIMIT 1"
+    ).fetchone()
+
+
+def get_run_selection(conn: sqlite3.Connection, run_id: str) -> tuple[int, int] | None:
+    row = conn.execute(
+        "SELECT chapter_number, verse_number FROM verse_history "
+        "WHERE run_id = ? ORDER BY reserved_at ASC LIMIT 1",
+        (run_id,),
+    ).fetchone()
+    if not row:
+        return None
+    return row["chapter_number"], row["verse_number"]
 
 
 def get_recent_captions(conn: sqlite3.Connection, limit: int) -> list[str]:

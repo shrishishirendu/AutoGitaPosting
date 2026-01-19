@@ -1,0 +1,21 @@
+{
+  "run_id": "5e3652ef-6dcf-4648-8979-b3cddca17427",
+  "status": "success",
+  "stage": "finish",
+  "started_at": "2026-01-19T06:57:46.679738",
+  "finished_at": "2026-01-19T06:57:47.078708",
+  "selection": {
+    "chapter": 1,
+    "verse": 4
+  },
+  "skipped": [],
+  "output_paths": {
+    "caption": "artifacts\\5e3652ef-6dcf-4648-8979-b3cddca17427\\caption.txt",
+    "image": "artifacts\\images\\composed\\5e3652ef-6dcf-4648-8979-b3cddca17427_composed.png"
+  },
+  "posting_ids": {
+    "facebook": "mock_fb_5e3652ef-6dcf-4648-8979-b3cddca17427",
+    "instagram": "mock_ig_5e3652ef-6dcf-4648-8979-b3cddca17427"
+  },
+  "error": null
+}

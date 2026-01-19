@@ -1,0 +1,11 @@
+ts=2026-01-19T06:57:46.694858Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=sequence msg=stage_start
+ts=2026-01-19T06:57:46.703208Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=sequence msg=selection chapter=1 verse=4
+ts=2026-01-19T06:57:46.711967Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=fetch msg=stage_start
+ts=2026-01-19T06:57:46.711967Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=fetch msg=fetch_attempt chapter=1 verse=4
+ts=2026-01-19T06:57:46.722675Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=commentary msg=stage_start
+ts=2026-01-19T06:57:46.730886Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=image_prompt msg=stage_start
+ts=2026-01-19T06:57:46.749559Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=image_generate msg=stage_start
+ts=2026-01-19T06:57:46.970382Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=image_compose msg=stage_start
+ts=2026-01-19T06:57:47.025115Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=package msg=stage_start
+ts=2026-01-19T06:57:47.040916Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=post msg=stage_start
+ts=2026-01-19T06:57:47.078708Z level=INFO run_id=5e3652ef-6dcf-4648-8979-b3cddca17427 stage=finish msg=stage_complete
